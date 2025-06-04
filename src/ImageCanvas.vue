@@ -48,18 +48,28 @@ onMounted(() => {
     cvReady.value = true;
     statusMessage.value = 'OpenCV.js已加载! 点击图片中的物体开始';
   }
-  // 添加事件监听
-  canvas.value.addEventListener('mousedown', startDrawing);
-  canvas.value.addEventListener('mousemove', draw);
-  canvas.value.addEventListener('mouseup', endDrawing);
-  canvas.value.addEventListener('dblclick', closePolygon);
-  canvas.value.addEventListener('click', handleCannyClick);
-  canvas.value.addEventListener('dblclick', handleCannyDoubleClick);
-  canvas.value.addEventListener('mousedown', startDragging);
-  canvas.value.addEventListener('mousemove', dragPoint);
-  canvas.value.addEventListener('mouseup', stopDragging);
+  eventListener();
 });
-
+function eventListener() {
+  if (cannyEdit.value) {
+    canvas.value.removeEventListener('mousedown', startDrawing);
+    canvas.value.removeEventListener('mousemove', draw);
+    canvas.value.removeEventListener('mouseup', endDrawing);
+    // canvas.value.removeEventListener('dblclick', closePolygon);
+    canvas.value.removeEventListener('click', handleCannyClick);
+  } else {
+    // 添加事件监听
+    canvas.value.addEventListener('mousedown', startDrawing);
+    canvas.value.addEventListener('mousemove', draw);
+    canvas.value.addEventListener('mouseup', endDrawing);
+    canvas.value.addEventListener('dblclick', closePolygon);
+    canvas.value.addEventListener('click', handleCannyClick);
+    canvas.value.addEventListener('dblclick', handleCannyDoubleClick);
+    canvas.value.addEventListener('mousedown', startDragging);
+    canvas.value.addEventListener('mousemove', dragPoint);
+    canvas.value.addEventListener('mouseup', stopDragging);
+  }
+}
 const getImageUrl = (url) => {
   return new URL(url, import.meta.url).href;
 };
@@ -125,7 +135,7 @@ function startDrawing(e) {
     redrawSelection();
     return;
   }
-
+  resetDrawing();
   isDrawing.value = true;
   const rect = canvas.value.getBoundingClientRect();
   const x = e.clientX - rect.left;
@@ -141,13 +151,24 @@ function startDrawing(e) {
   }
 
   points.value.push({ x, y });
-
-  statusMessage.value = mode.value === 'freehand' ? '拖动鼠标绘制选区...' : '继续点击添加顶点，双击闭合选区';
 }
 
 // 绘制过程
 function draw(e) {
   if (!isDrawing.value || mode.value === 'canny') return;
+
+  // 添加拖拽点移动功能
+  if (cannyEdit.value && draggingIndex.value !== -1) {
+    const rect = canvas.value.getBoundingClientRect();
+    const scaleX = canvas.value.width / rect.width;
+    const scaleY = canvas.value.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    points.value[draggingIndex.value] = { x, y };
+    redrawSelection();
+    return;
+  }
 
   const rect = canvas.value.getBoundingClientRect();
   const x = e.clientX - rect.left;
@@ -196,6 +217,7 @@ function endDrawing() {
 
 // 闭合多边形（多边形模式）
 function closePolygon() {
+  if (cannyEdit.value) return;
   if (mode.value === 'polygon' && points.value.length > 2) {
     isDrawing.value = false;
     // 添加路径闭合逻辑
@@ -252,8 +274,7 @@ function canvasApplyFill() {
   ctx.lineWidth = strokeWidth.value;
   ctx.stroke();
 
-  statusMessage.value = '选区已应用! 可以开始新选区';
-  resetDrawing();
+  // resetDrawing();
 }
 
 // 辅助函数：绘制已存在的多边形锚点
@@ -398,49 +419,43 @@ function drawDetectedContours() {
   ctx.clearRect(0, 0, canvas.value.width, canvas.value.height);
   ctx.drawImage(originalImage, 0, 0);
 
-  if (selectedContourIndex.value !== -1) {
-    const contour = detectedContours.value[selectedContourIndex.value];
-    ctx.beginPath();
-    ctx.moveTo(contour[0].x, contour[0].y);
+  // if (selectedContourIndex.value !== -1) {
+  const contour = mode.value !== 'canny' ? points.value : detectedContours.value[selectedContourIndex.value];
+  ctx.beginPath();
+  ctx.moveTo(contour[0].x, contour[0].y);
 
-    for (let i = 1; i < contour.length; i++) {
-      ctx.lineTo(contour[i].x, contour[i].y);
-    }
+  for (let i = 1; i < contour.length; i++) {
+    ctx.lineTo(contour[i].x, contour[i].y);
+  }
 
-    ctx.closePath();
+  ctx.closePath();
 
-    ctx.strokeStyle = strokeColor.value;
-    ctx.lineWidth = strokeWidth.value;
-    ctx.fillStyle = hexToRgba(fillColor.value, fillOpacity.value / 100);
-    ctx.fill();
-    ctx.lineCap = 'round';
-    ctx.stroke();
+  ctx.strokeStyle = strokeColor.value;
+  ctx.lineWidth = strokeWidth.value;
+  ctx.fillStyle = hexToRgba(fillColor.value, fillOpacity.value / 100);
+  ctx.fill();
+  ctx.lineCap = 'round';
+  ctx.stroke();
 
-    // 绘制可拖拽控制点
-    if (cannyEdit.value) {
-      ctx.fillStyle = '#ff9900';
-      contour.forEach((point) => {
-        ctx.beginPath();
-        ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
-        ctx.fill();
-      });
-    }
-    // ctx.fillStyle = '#ff9900';
-    // contour.forEach((point) => {
-    //   ctx.beginPath();
-    //   ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
-    //   ctx.fill();
-    // });
+  // 绘制可拖拽控制点
+  if (cannyEdit.value) {
+    ctx.fillStyle = '#ff9900';
+    contour.forEach((point) => {
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+    });
   }
 }
 // 修改startDragging函数
 function startDragging(e) {
-  if (mode.value !== 'canny' || selectedContourIndex.value === -1 || !cannyEdit.value) return;
+  if (!cannyEdit.value) return;
 
   // 添加右键事件监听
   canvas.value.addEventListener('contextmenu', handleRightClick);
 
-  const contour = detectedContours.value[selectedContourIndex.value];
+  // const contour = detectedContours.value[selectedContourIndex.value];
+  const contour = mode.value !== 'canny' ? points.value : detectedContours.value[selectedContourIndex.value];
   const rect = canvas.value.getBoundingClientRect();
   const scaleX = canvas.value.width / rect.width;
   const scaleY = canvas.value.height / rect.height;
@@ -460,8 +475,8 @@ function startDragging(e) {
 
 function dragPoint(e) {
   if (!isDragging.value || !cannyEdit.value) return;
-
-  const contour = detectedContours.value[selectedContourIndex.value];
+  const contour = mode.value !== 'canny' ? points.value : detectedContours.value[selectedContourIndex.value];
+  // const contour = detectedContours.value[selectedContourIndex.value];
   const rect = canvas.value.getBoundingClientRect();
   const scaleX = canvas.value.width / rect.width;
   const scaleY = canvas.value.height / rect.height;
@@ -475,8 +490,8 @@ function dragPoint(e) {
 function handleRightClick(e) {
   e.preventDefault();
   if (!cannyEdit.value) return;
-
-  const contour = detectedContours.value[selectedContourIndex.value];
+  const contour = mode.value !== 'canny' ? points.value : detectedContours.value[selectedContourIndex.value];
+  // const contour = detectedContours.value[selectedContourIndex.value];
   const rect = canvas.value.getBoundingClientRect();
   const scaleX = canvas.value.width / rect.width;
   const scaleY = canvas.value.height / rect.height;
@@ -506,15 +521,14 @@ function stopDragging() {
 }
 
 function handleCannyDoubleClick(e) {
-  if (mode.value !== 'canny' || selectedContourIndex.value === -1 || !cannyEdit.value) return;
-
-  const contour = detectedContours.value[selectedContourIndex.value];
+  if (!cannyEdit.value) return;
+  const contour = mode.value !== 'canny' ? points.value : detectedContours.value[selectedContourIndex.value];
+  // const contour = detectedContours.value[selectedContourIndex.value];
   const rect = canvas.value.getBoundingClientRect();
   const scaleX = canvas.value.width / rect.width;
   const scaleY = canvas.value.height / rect.height;
   const x = (e.clientX - rect.left) * scaleX;
   const y = (e.clientY - rect.top) * scaleY;
-
   // 查找最近边并插入新点
   let minDist = Infinity;
   let insertIndex = -1;
@@ -523,8 +537,7 @@ function handleCannyDoubleClick(e) {
     const p1 = contour[i];
     const p2 = contour[(i + 1) % contour.length];
     const dist = pointToLineDistance({ x, y }, p1, p2);
-
-    if (dist < minDist && dist < 20) {
+    if (dist < minDist && dist < 10) {
       minDist = dist;
       insertIndex = i + 1;
     }
@@ -538,7 +551,7 @@ function handleCannyDoubleClick(e) {
 
 function pointToLineDistance(p, a, b) {
   const numerator = Math.abs((b.y - a.y) * p.x - (b.x - a.x) * p.y + b.x * a.y - b.y * a.x);
-  const denominator = Math.sqrt(Math.pow(b.y - a.y, 2) + Math.pow(b.x - a.x, 2));
+  const denominator = Math.sqrt(Math.pow(b.y - a.y, 2) + Math.pow(b.x - a.x, 2)).toFixed(2) - 0;
   return numerator / denominator;
 }
 
@@ -652,7 +665,8 @@ function hexToRgba(hex, opacity) {
 
 function handleCannyEdit() {
   cannyEdit.value = !cannyEdit.value;
-  mode.value === 'canny' && drawDetectedContours();
+  drawDetectedContours();
+  eventListener();
 }
 
 const cannyEditName = computed(() => {

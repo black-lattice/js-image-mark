@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, useTemplateRef } from 'vue';
 // 画布引用
 const canvas = ref(null);
 let ctx = null;
@@ -42,7 +42,7 @@ const detectedContours = ref([]);
 // 初始化
 onMounted(() => {
   ctx = canvas.value.getContext('2d');
-  loadSampleImage();
+  // loadSampleImage();
   // 设置OpenCV加载回调
   if (window.cv) {
     cvReady.value = true;
@@ -76,7 +76,7 @@ const getImageUrl = (url) => {
 function loadSampleImage() {
   const img = new Image();
   img.crossOrigin = 'Anonymous';
-  img.src = getImageUrl('./image-1.png'); //'https://images.unsplash.com/photo-1501183638710-841dd1904471?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';
+  img.src = imgUrl.value; //getImageUrl('./image-1.png');
 
   img.onload = function () {
     try {
@@ -670,11 +670,41 @@ function handleCannyEdit() {
 const cannyEditName = computed(() => {
   return cannyEdit.value ? '关闭canny编辑' : '开启canny编辑';
 });
+// 新增处理图片上传的函数
+const handleImageUpload = (e) => {
+  const file = e.target.files[0];
+  const reader = new FileReader();
+  reader.onload = function (event) {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = event.target.result;
+    img.onload = function () {
+      try {
+        // 自动适配图片尺寸
+        canvas.value.width = img.naturalWidth;
+        canvas.value.height = img.naturalHeight;
+        canvas.value.style.display = 'block';
+        ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+        originalImage = new Image();
+        originalImage.src = canvas.value.toDataURL();
+      } catch (error) {
+        console.error('图片加载失败:', error);
+      }
+    };
+  };
+  reader.readAsDataURL(file);
+};
+const imUp = useTemplateRef('imageUpload');
+function chooseImage() {
+  imUp.value.click();
+}
 </script>
-
 <template>
   <div class="canvas-section">
     <div class="toolbar">
+      <input type="file" ref="imageUpload" accept="image/*" style="display: none" @change="handleImageUpload" />
+      <button key="uploadImage" @click="chooseImage" class="btn">上传图片</button>
+
       <button key="freehand" @click="setMode('freehand')" :class="['btn', { 'btn-active': mode === 'freehand' }]">自由索套</button>
       <button key="polygon" @click="setMode('polygon')" :class="['btn', { 'btn-active': mode === 'polygon' }]">多边形索套</button>
       <button key="canny" @click="setMode('canny')" :class="['btn', { 'btn-active': mode === 'canny' }]">边缘检测</button>

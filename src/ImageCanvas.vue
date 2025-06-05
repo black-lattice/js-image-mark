@@ -46,7 +46,6 @@ onMounted(() => {
   // 设置OpenCV加载回调
   if (window.cv) {
     cvReady.value = true;
-    statusMessage.value = 'OpenCV.js已加载! 点击图片中的物体开始';
   }
   eventListener();
 });
@@ -55,7 +54,6 @@ function eventListener() {
     canvas.value.removeEventListener('mousedown', startDrawing);
     canvas.value.removeEventListener('mousemove', draw);
     canvas.value.removeEventListener('mouseup', endDrawing);
-    // canvas.value.removeEventListener('dblclick', closePolygon);
     canvas.value.removeEventListener('click', handleCannyClick);
   } else {
     // 添加事件监听

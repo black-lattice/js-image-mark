@@ -1,5 +1,7 @@
-import { createApp } from 'vue';
-import './style.css';
-import ImageCanvas from './ImageCanvas.vue';
+import JsImageMark from './ImageCanvas.vue';
 
-createApp(ImageCanvas).mount('#app');
+const install = (app) => {
+  app.component('JsImageMark', JsImageMark);
+};
+export { JsImageMark };
+export default { install };

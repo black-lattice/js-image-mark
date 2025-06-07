@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, useTemplateRef, watch } from 'vue';
+import { ref, defineEmits, watch, defineExpose, defineProps } from 'vue';
 import { useCannyDetection } from './composables/useCannyDetection';
 import { useCanvasDrawing } from './composables/useCanvasDrawing';
 import { useCanvasEvents } from './composables/useCanvasEvents';
@@ -13,7 +13,12 @@ const canvas = ref(null);
 const ctx = ref(null);
 const originalImage = ref(null);
 const imageUpload = ref(null);
-
+const props = defineProps({
+  maxStack: {
+    type: Number,
+    default: 20,
+  },
+});
 // 初始化组合式函数
 const {
   // mode,
@@ -58,12 +63,26 @@ const { setupEventListeners, handleKeyDown } = useCanvasEvents(canvas, {
   applyFill,
   isDrawing,
 });
-const { undo, redo, canRedo, canUndo, recordState, setupRecordEvent, clearHistory } = useCanvasHistory({ canvas, mode, cannyEdit, detectedContours, selectedContourIndex, points, isDrawing });
+const { undo, redo, canRedo, canUndo, recordState, clearHistory, currentData } = useCanvasHistory({
+  maxStack: props.maxStack,
+  canvas,
+  mode,
+  cannyEdit,
+  detectedContours,
+  selectedContourIndex,
+  points,
+  isDrawing,
+});
 // 监听模式变化
 watch([mode, cannyEdit], () => {
   setupEventListeners();
   setupPanHandlers();
 });
+const emit = defineEmits(['change']);
+EventBus.on('recordState', () => {
+  emit('change', { data: currentData.value });
+});
+defineExpose({ data: currentData });
 
 function setMode(newMode) {
   mode.value = newMode;
@@ -111,8 +130,7 @@ function handleImageUpload(e) {
         // 初始化事件监听
         setupEventListeners();
         setupPanHandlers();
-        setupRecordEvent();
-        recordState();
+        EventBus.emit('recordState');
         // 如果当前是 Canny 模式，执行边缘检测
         if (mode.value === 'canny') {
           detectEdges();
@@ -150,7 +168,7 @@ function handleApplyFill() {
 </script>
 
 <template>
-  <div class="canvas-section">
+  <div class="js-image-mark">
     <div class="toolbar">
       <input type="file" ref="imageUpload" accept="image/*" style="display: none" @change="handleImageUpload" />
       <img key="uploadImage" @click="chooseImage" class="btn" src="../src/assets/icons/upload.svg" alt="upload" />
@@ -170,16 +188,10 @@ function handleApplyFill() {
 </template>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-.canvas-section {
+.js-image-mark {
   width: 100%;
   height: 100%;
+  background: #ffffff;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -206,7 +218,6 @@ canvas {
 }
 
 .toolbar {
-  height: 60px;
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
@@ -217,8 +228,8 @@ canvas {
 }
 
 .btn {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   padding: 5px;
   border: none;
   border-radius: 8px;
